@@ -9,6 +9,9 @@ import exifread
 import argparse
 import sys
 import tkinter as tk
+from tkinter import ttk
+import subprocess
+import time
 
 class FileProcessor(threading.Thread):
     def __init__(self, queue, simulate=False):
@@ -17,7 +20,7 @@ class FileProcessor(threading.Thread):
         self.simulate = simulate
 
     def run(self):
-        while (True):
+        while True:
             try:
                 file = self.queue.get_nowait()
                 if not self.simulate:
@@ -136,7 +139,7 @@ class Client:
 
     async def opendir(self, dir):
         self.dir = dir
-        msg = 'open_directory ' + dir.name
+        msg = 'open_directory ' + dir.as_posix()
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -145,7 +148,7 @@ class Client:
         return data.decode() == 'ok'
 
     async def closedir(self):
-        msg = 'close_directory ' + self.dir.name
+        msg = 'close_directory ' + self.dir.as_posix()
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -154,7 +157,7 @@ class Client:
         return data.decode() == 'ok'
 
     async def get_nr_of_files(self):
-        msg = 'get_number_of_files ' + self.dir.name
+        msg = 'get_number_of_files ' + self.dir.as_posix()
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -163,7 +166,7 @@ class Client:
         return int(data.decode())
 
     async def get_nr_of_converted_files(self):
-        msg = 'get_number_of_converted_files ' + self.dir.name
+        msg = 'get_number_of_converted_files ' + self.dir.as_posix()
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -172,7 +175,7 @@ class Client:
         return int(data.decode())
 
     async def convert(self):
-        msg = 'start_convertion ' + self.dir.name
+        msg = 'start_convertion ' + self.dir.as_posix()
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -180,25 +183,68 @@ class Client:
         await self.__close()
         return data.decode() == 'ok'
 
-class ClientGui(tk.Frame):
-    def __init__(self, master=None):
+class ClientGui(ttk.Frame):
+    def __init__(self, master, ipaddr):
         super().__init__(master)
+        ttk.Frame(self)['padding'] = (3, 3, 12, 12)
+        
         self.master = master
-        self.pack()
+        self.master.title('Organize pics')
+        self.master.columnconfigure(0, weight=1)
+        self.master.rowconfigure(0, weight=1)
+        
+        self.grid(column=0, row=0, sticky=(tk.N, tk.W, tk.E, tk.S))
+        
+        self.nr_of_files = 0
+        self.nr_of_converted_files = 0
+        self.client = Client(ipaddr)
+        self.thread = None
+        
         self.create_widgets()
 
+    async def run_update_progress(self):
+        self.nr_of_converted_files = await self.client.get_nr_of_converted_files()
+
+    def update_progress(self):
+        while self.thread.is_alive():
+            time.sleep(0.1)
+            asyncio.run(self.run_update_progress())
+            self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
+            if self.nr_of_converted_files >= self.nr_of_files:
+                self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files) + '-----> DONE')
+                self.exec_button['state'] = 'normal'
+                break
+
     def create_widgets(self):
-        self.hi_there = tk.Button(self)
-        self.hi_there["text"] = "Hello World\n(click me)"
-        self.hi_there["command"] = self.say_hi
-        self.hi_there.pack(side="top")
+        self.progress_text = tk.StringVar()
+        self.progress_var = ttk.Label(self, textvariable=self.progress_text).grid(column=1, row=3, sticky=tk.S)
+        self.exec_button = ttk.Button(self, text='Convert', command=self.convert)
+        self.exec_button.grid(column=3, row=2, sticky=(tk.S,tk.E))
+        self.folder_button = ttk.Button(self, text='Browse', command=self.browse)
+        self.folder_button.grid(column=1, row=1, sticky=(tk.N,tk.W))
+        self.folder_text = tk.StringVar()
+        self.folder_var = ttk.Entry(self, textvariable=self.folder_text).grid(column=3, row=1, sticky=tk.E)
+        #self.folder_text.set('/media/share/tmp')
+        self.folder_text.set('/home/raul/Pictures/2018_05_Cecina/')
+        self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
 
-        self.quit = tk.Button(self, text="QUIT", fg="red",
-                              command=self.master.destroy)
-        self.quit.pack(side="bottom")
+    def browse(self):
+        self.file_dialog = tk.tkFileDialog()
 
-    def say_hi(self):
-        print("hi there, everyone!")
+    async def run_convert(self, folder):
+        await self.client.opendir(folder)
+        self.nr_of_files = await self.client.get_nr_of_files()
+        await self.client.convert()
+
+    def convert(self):
+        folder = Path(self.folder_text.get())
+        if not folder.is_dir():
+            self.progress_text.set('invalid folder')
+            return
+        self.thread = threading.Thread(target=self.update_progress)
+        self.exec_button['state'] = 'disabled'
+        asyncio.run(self.run_convert(folder))
+        self.thread.start()
 
 async def main(ipaddr, test=False):
     comm = Comm(ipaddr, test)
@@ -210,6 +256,8 @@ if __name__ == '__main__':
                         help='Run application as client widget')
     parser.add_argument('--ip', dest='ipaddr', default='127.0.0.1',
                         help='IP address to serve on or connect to')
+    parser.add_argument('--standalone', action='store_true',
+                        help='run server on the same machine')
     parser.add_argument('-t', '--test', action='store_true',
                         help='set if this is running the unittests')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
@@ -224,9 +272,17 @@ if __name__ == '__main__':
         if not args.client:
             asyncio.run(main(args.ipaddr, args.sim))
         else:
+            if args.standalone:
+                proc_args = ['python3', 'organizepics.py']
+                if args.sim:
+                    proc_args.append('--sim')
+                proc = subprocess.Popen(proc_args)
             root = tk.Tk()
-            client = ClientGui(master=root)
+            client = ClientGui(root, args.ipaddr)
             client.mainloop()
+            if args.standalone:
+                proc.terminate()
+                proc.wait()
     else:
         import unittest
         import tempfile
