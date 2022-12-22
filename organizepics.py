@@ -29,6 +29,7 @@ class FileProcessor(threading.Thread):
                         raise TypeError
                     exif_tags = open(file, 'rb')
                     tags = exifread.process_file(exif_tags)
+                    print('File: ' + str(file) + ' Date: ' + str(tags['EXIF DateTimeOriginal']))
                 self.queue.task_done()
             except queue.Empty:
                 break
@@ -211,7 +212,7 @@ class ClientGui(ttk.Frame):
             asyncio.run(self.run_update_progress())
             self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
             if self.nr_of_converted_files >= self.nr_of_files:
-                self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files) + '-----> DONE')
+                self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files) + '-----> COMPLETED')
                 self.exec_button['state'] = 'normal'
                 break
 
@@ -225,7 +226,7 @@ class ClientGui(ttk.Frame):
         self.folder_text = tk.StringVar()
         self.folder_var = ttk.Entry(self, textvariable=self.folder_text).grid(column=3, row=1, sticky=tk.E)
         #self.folder_text.set('/media/share/tmp')
-        self.folder_text.set('/home/raul/Pictures/2018_05_Cecina/')
+        self.folder_text.set('/home/raul/Pictures/something/')
         self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
 
     def browse(self):
