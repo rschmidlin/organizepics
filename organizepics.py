@@ -73,7 +73,6 @@ class Comm:
         self.test = test
 
     def _process(self, input):
-        print(input)
         dirname = input.split()[1]
         if not dirname or dirname not in self.pics and not input.startswith('open_directory'):
             ret = 'wrongdir'
@@ -119,54 +118,58 @@ class Client:
         self.writer = None
         self.dir = None
 
-    def __del__(self):
-        print('bye bye client')
-
-    async def open(self):
+    async def __open(self):
         self.reader, self.writer = await asyncio.open_connection(
             self.ipaddr, 8888)
     
-    async def close(self):
+    async def __close(self):
         self.writer.close()
         await self.writer.wait_closed()
 
     async def opendir(self, dir):
-        print('opendir')
         self.dir = dir
         msg = 'open_directory ' + dir.name
+        await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
         data = await self.reader.read(100)
+        await self.__close()
         return data.decode() == 'ok'
 
     async def closedir(self):
-        print('closedir')
         msg = 'close_directory some' + self.dir.name
+        await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
         data = await self.reader.read(100)
+        await self.__close()
         return data.decode() == 'ok'
 
     async def get_nr_of_files(self):
-        print('getnroffiles')
         msg = 'get_number_of_files ' + self.dir.name
+        await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
         data = await self.reader.read(100)
+        await self.__close()
         return data.decode()
 
     async def get_nr_of_converted_files(self):
         msg = 'get_number_of_converted_files ' + self.dir.name
+        await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
         data = await self.reader.read(100)
+        await self.__close()
         return data.decode()
 
     async def convert(self):
         msg = 'start_convertion ' + self.dir.name
+        await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
         data = await self.reader.read(100)
+        await self.__close()
         return data.decode() == 'ok'
 
 class ClientGui(tk.Frame):
@@ -339,11 +342,9 @@ if __name__ == '__main__':
             async def run_open_dir(self):
                 try:
                     await self.run_server()
-                    await self.client.open()
                     ret = await self.client.opendir(self.picdir)
                     self.assertTrue(ret)
                 finally:
-                    await self.client.close()
                     await self.stop_server()
 
             @unittest.skip('focus on get_nr_of_files')
@@ -353,14 +354,11 @@ if __name__ == '__main__':
             async def run_get_nr_of_files(self):
                 try:
                     await self.run_server()
-                    await self.client.open()
-                    #ret = await self.client.opendir(self.picdir)
-                    #self.assertTrue(ret)
-                    await asyncio.sleep(0.1)
+                    ret = await self.client.opendir(self.picdir)
+                    self.assertTrue(ret)
                     ret = await self.client.get_nr_of_files()
-                    self.assertEqual(ret, 2)
+                    self.assertEqual(ret, '2')
                 finally:
-                    await self.client.close()
                     await self.stop_server()
 
             def test_get_nr_of_files(self):
