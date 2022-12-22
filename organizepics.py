@@ -37,6 +37,7 @@ class Pictures:
         self.dirname = dirname
         self.queue = queue.Queue()
         self.file_processors = []
+        self.track_progress = False
         for _ in range(4):
             self.file_processors.append(FileProcessor(self.queue, test))
 
@@ -51,7 +52,10 @@ class Pictures:
         return len(self.files)
 
     def get_number_of_converted_files(self):
-        return len(self.files) - self.queue.qsize()
+        ret = 0
+        if self.track_progress:
+            ret = len(self.files) - self.queue.qsize()
+        return ret
 
     def process_files(self):
         '''Reads the date of the picture and moves it to a corresponding subfolder'''
@@ -60,6 +64,7 @@ class Pictures:
         self.__process_files()
 
     def __process_files(self):
+        self.track_progress = True
         for file_processor in self.file_processors:
             file_processor.start()
 
@@ -137,7 +142,7 @@ class Client:
         return data.decode() == 'ok'
 
     async def closedir(self):
-        msg = 'close_directory some' + self.dir.name
+        msg = 'close_directory ' + self.dir.name
         await self.__open()
         self.writer.write(msg.encode())
         await self.writer.drain()
@@ -152,7 +157,7 @@ class Client:
         await self.writer.drain()
         data = await self.reader.read(100)
         await self.__close()
-        return data.decode()
+        return int(data.decode())
 
     async def get_nr_of_converted_files(self):
         msg = 'get_number_of_converted_files ' + self.dir.name
@@ -161,7 +166,7 @@ class Client:
         await self.writer.drain()
         data = await self.reader.read(100)
         await self.__close()
-        return data.decode()
+        return int(data.decode())
 
     async def convert(self):
         msg = 'start_convertion ' + self.dir.name
@@ -337,19 +342,16 @@ if __name__ == '__main__':
                 self.picture1.close()
                 self.picture2.close()
                 self.picdir.cleanup()
-                del self.client
 
             async def run_open_dir(self):
                 try:
                     await self.run_server()
                     ret = await self.client.opendir(self.picdir)
                     self.assertTrue(ret)
+                    ret = await self.client.closedir()
+                    self.assertTrue(ret)
                 finally:
                     await self.stop_server()
-
-            @unittest.skip('focus on get_nr_of_files')
-            def test_open_dir(self):
-                asyncio.run(self.run_open_dir())
 
             async def run_get_nr_of_files(self):
                 try:
@@ -357,12 +359,49 @@ if __name__ == '__main__':
                     ret = await self.client.opendir(self.picdir)
                     self.assertTrue(ret)
                     ret = await self.client.get_nr_of_files()
-                    self.assertEqual(ret, '2')
+                    self.assertEqual(ret, 2)
+                    ret = await self.client.closedir()
+                    self.assertTrue(ret)
                 finally:
                     await self.stop_server()
 
+            async def run_get_nr_of_converted_files(self):
+                try:
+                    await self.run_server()
+                    ret = await self.client.opendir(self.picdir)
+                    self.assertTrue(ret)
+                    ret = await self.client.get_nr_of_converted_files()
+                    self.assertEqual(ret, 0)
+                    ret = await self.client.closedir()
+                    self.assertTrue(ret)
+                finally:
+                    await self.stop_server()
+
+            async def run_convert(self):
+                try:
+                    await self.run_server()
+                    ret = await self.client.opendir(self.picdir)
+                    self.assertTrue(ret)
+                    ret = await self.client.convert()
+                    self.assertTrue(ret)
+                    ret = await self.client.get_nr_of_converted_files()
+                    self.assertEqual(ret, 2)
+                    ret = await self.client.closedir()
+                    self.assertTrue(ret)
+                finally:
+                    await self.stop_server()
+
+            def test_open_dir(self):
+                asyncio.run(self.run_open_dir())
+
             def test_get_nr_of_files(self):
                 asyncio.run(self.run_get_nr_of_files())
+
+            def test_get_nr_of_converted_files(self):
+                asyncio.run(self.run_get_nr_of_converted_files())
+
+            def test_run_convert(self):
+                asyncio.run(self.run_convert())
 
         newargv = [arg for arg in sys.argv if arg not in ('-t', '--test', '-d', '--debug', '--ip')]
         # TODO catch ip address value to remove
