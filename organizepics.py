@@ -11,16 +11,16 @@ import sys
 import tkinter as tk
 
 class FileProcessor(threading.Thread):
-    def __init__(self, queue, test=False):
+    def __init__(self, queue, simulate=False):
         super().__init__()
         self.queue = queue
-        self.test = test
+        self.simulate = simulate
 
     def run(self):
         while (True):
             try:
                 file = self.queue.get_nowait()
-                if not self.test:
+                if not self.simulate:
                     type = Image.open(file)
                     if type == 'PNG':
                         raise TypeError
@@ -33,13 +33,13 @@ class FileProcessor(threading.Thread):
                 raise
 
 class Pictures:
-    def __init__(self, dirname, test=False):
+    def __init__(self, dirname, simulate=False):
         self.dirname = dirname
         self.queue = queue.Queue()
         self.file_processors = []
         self.track_progress = False
         for _ in range(4):
-            self.file_processors.append(FileProcessor(self.queue, test))
+            self.file_processors.append(FileProcessor(self.queue, simulate))
 
     def process_dir(self):
         '''Extract files from directory'''
@@ -72,18 +72,21 @@ class Pictures:
         self.queue.join()
 
 class Comm:
-    def __init__(self, ipaddr, test=False):
+    def __init__(self, ipaddr, simulate=False):
         self.pics = {}
         self.ipaddr = ipaddr
-        self.test = test
+        self.simulate = simulate
 
     def _process(self, input):
-        dirname = input.split()[1]
-        if not dirname or dirname not in self.pics and not input.startswith('open_directory'):
-            ret = 'wrongdir'
+        inputs = input.split()
+        if len(inputs) < 2:
+            ret = 'missingdir'
+        elif inputs[1] not in self.pics and not input.startswith('open_directory'):
+            ret = 'closeddir'
         else:
+            dirname = inputs[1]
             if input.startswith('open_directory'):
-                self.pics[dirname] = Pictures(dirname, self.test)
+                self.pics[dirname] = Pictures(dirname, self.simulate)
                 self.pics[dirname].process_dir()
                 ret = 'ok'
             elif input.startswith('get_number_of_files'):
@@ -209,17 +212,17 @@ if __name__ == '__main__':
                         help='IP address to serve on or connect to')
     parser.add_argument('-t', '--test', action='store_true',
                         help='set if this is running the unittests')
-    parser.add_argument('--internal_test', action='store_true',
-                        help='set by unittest to execute server for test')
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
-                        help='debug server while running tests elsewhere')
+                        help='debug server while running tests in a separate process (execute server with -d and tests with -t -d)')
+    parser.add_argument('--sim', action='store_true',
+                        help='only simulate actions, do not create/modify files')
     args = parser.parse_args()
 
     if args.debug and not args.test:
         asyncio.run(main(args.ipaddr, True))
     elif not args.test:
         if not args.client:
-            asyncio.run(main(args.ipaddr, args.internal_test))
+            asyncio.run(main(args.ipaddr, args.sim))
         else:
             root = tk.Tk()
             client = ClientGui(master=root)
@@ -260,19 +263,6 @@ if __name__ == '__main__':
                 self.assertEqual(nr, 2)
 
         class TestComm(unittest.TestCase):
-            async def run_server_and_client(self, message):
-                if not args.debug:
-                    proc = await asyncio.create_subprocess_exec('python3', *['organizepics.py', '--internal_test'])
-                    await asyncio.sleep(0.3)
-                reader, writer = await asyncio.open_connection(
-                    '127.0.0.1', 8888)
-                writer.write(message.encode())
-                data = await reader.read(100)
-                writer.close()
-                if not args.debug:
-                    proc.terminate()
-                    await proc.wait()
-
             def setUp(self):
                 self.picdir = tempfile.TemporaryDirectory()
                 self.picture1 = tempfile.NamedTemporaryFile(suffix='.jpg', dir=self.picdir.name)
@@ -310,21 +300,24 @@ if __name__ == '__main__':
 
             def test_operations_on_wrong_directory(self):
                 ret = self.comm._process('start_convertion ' + 'wrongdir')
-                self.assertEqual(ret, 'wrongdir')
+                self.assertEqual(ret, 'closeddir')
                 ret = self.comm._process('get_number_of_converted_files ' + 'wrongdir')
-                self.assertEqual(ret, 'wrongdir')
+                self.assertEqual(ret, 'closeddir')
                 ret = self.comm._process('close_directory ' + 'wrongdir')
-                self.assertEqual(ret, 'wrongdir')
+                self.assertEqual(ret, 'closeddir')
 
-            @unittest.skip('check communication on new class')
-            def test_client_communication(self):
-                message = 'open_directory ' + self.picdir.name
-                asyncio.run(self.run_server_and_client(message))
+            def test_undefined_operations(self):
+                ret = self.comm._process('undefined ' + self.picdir.name)
+                self.assertEqual(ret, 'invalid')
+
+            def test_missing_directory(self):
+                ret = self.comm._process('start_convertion')
+                self.assertEqual(ret, 'missingdir')
 
         class TestClient(unittest.TestCase):
             async def run_server(self):
                 if not args.debug:
-                    self.proc = await asyncio.create_subprocess_exec('python3', *['organizepics.py', '--internal_test'])
+                    self.proc = await asyncio.create_subprocess_exec('python3', *['organizepics.py', '--sim'])
                     await asyncio.sleep(0.3)
 
             async def stop_server(self):
