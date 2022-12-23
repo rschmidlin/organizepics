@@ -243,8 +243,8 @@ class ClientGui(ttk.Frame):
         self.folder_button.grid(column=1, row=1, sticky=(tk.N,tk.W))
         self.folder_text = tk.StringVar()
         self.folder_var = ttk.Entry(self, textvariable=self.folder_text).grid(column=3, row=1, sticky=tk.E)
-        #self.folder_text.set('/media/share/tmp')
-        self.folder_text.set('/home/raul/Pictures/something/')
+        self.folder_text.set('/media/share/pictures/')
+        #self.folder_text.set('/home/raul/Pictures/something/')
         self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
 
     def browse(self):
@@ -257,9 +257,6 @@ class ClientGui(ttk.Frame):
 
     def convert(self):
         folder = Path(self.folder_text.get())
-        if not folder.is_dir():
-            self.progress_text.set('invalid folder')
-            return
         self.thread = threading.Thread(target=self.update_progress)
         self.exec_button['state'] = 'disabled'
         asyncio.run(self.run_convert(folder))
