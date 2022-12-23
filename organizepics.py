@@ -12,6 +12,8 @@ import tkinter as tk
 from tkinter import ttk
 import subprocess
 import time
+import shutil
+import os
 
 class FileProcessor(threading.Thread):
     def __init__(self, queue, simulate=False):
@@ -19,17 +21,32 @@ class FileProcessor(threading.Thread):
         self.queue = queue
         self.simulate = simulate
 
+    def get_date(self, filepath):
+        if not self.simulate:
+            type = Image.open(filepath)
+            if type == 'PNG':
+                raise TypeError
+            exif_tags = open(filepath, 'rb')
+            tags = exifread.process_file(exif_tags)
+            date = str(tags['EXIF DateTimeOriginal'])
+            date_parts = date.split(':')
+            year = date_parts[0]
+            month = date_parts[1]
+            return (year, month)
+
+    def copy_file(self, filepath, year, month):
+        newpath = os.path.normpath(os.path.join(filepath.parent, year, year + '_' + month))
+        os.makedirs(newpath, exist_ok=True)
+        shutil.copy(filepath, newpath)
+                    
     def run(self):
         while True:
             try:
-                file = self.queue.get_nowait()
+                filepath = self.queue.get_nowait()
                 if not self.simulate:
-                    type = Image.open(file)
-                    if type == 'PNG':
-                        raise TypeError
-                    exif_tags = open(file, 'rb')
-                    tags = exifread.process_file(exif_tags)
-                    print('File: ' + str(file) + ' Date: ' + str(tags['EXIF DateTimeOriginal']))
+                    (year, month) = self.get_date(filepath)
+                    self.copy_file(filepath, year, month)
+                    print('File: ' + filepath.as_posix() + ' Date: ' + year + '_' + month)
                 self.queue.task_done()
             except queue.Empty:
                 break
@@ -212,6 +229,7 @@ class ClientGui(ttk.Frame):
             asyncio.run(self.run_update_progress())
             self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
             if self.nr_of_converted_files >= self.nr_of_files:
+                asyncio.run(self.client.closedir())
                 self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files) + '-----> COMPLETED')
                 self.exec_button['state'] = 'normal'
                 break
