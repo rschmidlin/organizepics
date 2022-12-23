@@ -22,22 +22,21 @@ class FileProcessor(threading.Thread):
         self.simulate = simulate
 
     def get_date(self, filepath):
-        if not self.simulate:
-            type = Image.open(filepath)
-            if type == 'PNG':
-                raise TypeError
-            exif_tags = open(filepath, 'rb')
-            tags = exifread.process_file(exif_tags)
-            date = str(tags['EXIF DateTimeOriginal'])
-            date_parts = date.split(':')
-            year = date_parts[0]
-            month = date_parts[1]
-            return (year, month)
+        type = Image.open(filepath)
+        if type == 'PNG':
+            raise TypeError
+        exif_tags = open(filepath, 'rb')
+        tags = exifread.process_file(exif_tags)
+        date = str(tags['EXIF DateTimeOriginal'])
+        date_parts = date.split(':')
+        year = date_parts[0]
+        month = date_parts[1]
+        return (year, month)
 
     def copy_file(self, filepath, year, month):
         newpath = os.path.normpath(os.path.join(filepath.parent, year, year + '_' + month))
         os.makedirs(newpath, exist_ok=True)
-        shutil.copy(filepath, newpath)
+        shutil.copy2(filepath, newpath)
                     
     def run(self):
         while True:
@@ -46,7 +45,8 @@ class FileProcessor(threading.Thread):
                 if not self.simulate:
                     (year, month) = self.get_date(filepath)
                     self.copy_file(filepath, year, month)
-                    print('File: ' + filepath.as_posix() + ' Date: ' + year + '_' + month)
+                else:
+                    print('Simulated processing of - ' + str(filepath))
                 self.queue.task_done()
             except queue.Empty:
                 break
