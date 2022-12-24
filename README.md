@@ -1,7 +1,9 @@
-===Organize pics===
+Organize pics
+=============
 This program copies jpgeg files with jpg or JPG extensions into a year and subsequently year_month subfolder formatted as YYYY/YYYY_MM. In addition, it can be run as a server client. For performance reasons, the process is parallelized.
 
-== Open Ponts ==
+Open Ponts
+----------
 
  - Why asyncio communication requires open/close for every transaction?
  - do I have to implement the RPC myself?
