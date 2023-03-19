@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from pathlib import Path
 import asyncio
@@ -16,6 +16,7 @@ import shutil
 import os
 
 class FileProcessor(threading.Thread):
+    supported_tags = ['EXIF DateTimeOriginal', 'Image DateTime']
     def __init__(self, queue, simulate=False):
         super().__init__()
         self.queue = queue
@@ -27,17 +28,23 @@ class FileProcessor(threading.Thread):
             raise TypeError
         exif_tags = open(filepath, 'rb')
         tags = exifread.process_file(exif_tags)
-        try:
-            date = str(tags['EXIF DateTimeOriginal'])
-        except KeyError:
-            date = str(tags['Image DateTime'])
-        date_parts = date.split(':')
+        dates = [str(val) for tag, val in tags.items() if tag in FileProcessor.supported_tags]
+        if len(dates) == 0:
+            print('File {} with tags {}'.format(filepath, tags))
+            print('    does not include any of the supported tags')
+            raise KeyError
+        date_parts = dates[0].split(':')
         year = date_parts[0]
         month = date_parts[1]
         return (year, month)
 
     def copy_file(self, filepath, year, month):
         newpath = os.path.normpath(os.path.join(filepath.parent, year, year + '_' + month))
+        os.makedirs(newpath, exist_ok=True)
+        shutil.copy2(filepath, newpath)
+
+    def copy_unsorted_file(self, filepath):
+        newpath = os.path.normpath(os.path.join(filepath.parent, 'unsorted'))
         os.makedirs(newpath, exist_ok=True)
         shutil.copy2(filepath, newpath)
                     
@@ -53,8 +60,8 @@ class FileProcessor(threading.Thread):
                 self.queue.task_done()
             except queue.Empty:
                 break
-            except TypeError:
-                raise
+            except KeyError:
+                self.copy_unsorted_file(filepath) 
 
 class Pictures:
     def __init__(self, dirname, simulate=False):
@@ -246,8 +253,8 @@ class ClientGui(ttk.Frame):
         self.folder_button.grid(column=1, row=1, sticky=(tk.N,tk.W))
         self.folder_text = tk.StringVar()
         self.folder_var = ttk.Entry(self, textvariable=self.folder_text).grid(column=3, row=1, sticky=tk.E)
-        self.folder_text.set('/media/share/pictures/')
-        #self.folder_text.set('/home/raul/Pictures/something/')
+        #self.folder_text.set('/media/share/tmp')
+        self.folder_text.set('/home/raul/Pictures/something/')
         self.progress_text.set(str(self.nr_of_converted_files) + '/' + str(self.nr_of_files))
 
     def browse(self):
@@ -260,6 +267,9 @@ class ClientGui(ttk.Frame):
 
     def convert(self):
         folder = Path(self.folder_text.get())
+        if not folder.is_dir():
+            self.progress_text.set('invalid folder')
+            return
         self.thread = threading.Thread(target=self.update_progress)
         self.exec_button['state'] = 'disabled'
         asyncio.run(self.run_convert(folder))
