@@ -27,7 +27,10 @@ class FileProcessor(threading.Thread):
             raise TypeError
         exif_tags = open(filepath, 'rb')
         tags = exifread.process_file(exif_tags)
-        date = str(tags['EXIF DateTimeOriginal'])
+        try:
+            date = str(tags['EXIF DateTimeOriginal'])
+        except KeyError:
+            date = str(tags['Image DateTime'])
         date_parts = date.split(':')
         year = date_parts[0]
         month = date_parts[1]
