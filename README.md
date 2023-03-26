@@ -1,6 +1,6 @@
 Organize pics
 =============
-This program copies jpgeg files with jpg or JPG extensions into a year and subsequently year_month subfolder formatted as YYYY/YYYY_MM. In addition, it can be run as a server client. For performance reasons, the process is parallelized.
+This script automatically organizes pictures in folders by date. It copies jpeg files with jpg or JPG extensions into a year and subsequently year_month subfolder formatted as YYYY/YYYY_MM. In addition, it can be run as a server client. For performance reasons, the process is parallelized.
 
 Open Ponts
 ----------
